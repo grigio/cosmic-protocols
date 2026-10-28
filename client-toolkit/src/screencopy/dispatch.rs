@@ -149,6 +149,12 @@ where
             }
             ext_image_copy_capture_frame_v1::Event::Ready => {
                 let frame = frame.lock().unwrap().clone();
+                // Destroy the frame object BEFORE waking the consumer. The consumer may
+                // immediately issue create_frame on the same session; if the destroy
+                // request has not been queued yet, the compositor raises
+                // `duplicate_frame` and disconnects us (freezing every screencast).
+                screencopy_frame.destroy();
+                conn.flush().ok();
                 app_data.ready(
                     conn,
                     qh,
@@ -157,9 +163,10 @@ where
                     },
                     frame,
                 );
-                screencopy_frame.destroy();
             }
             ext_image_copy_capture_frame_v1::Event::Failed { reason } => {
+                screencopy_frame.destroy();
+                conn.flush().ok();
                 app_data.failed(
                     conn,
                     qh,
@@ -168,7 +175,6 @@ where
                     },
                     reason,
                 );
-                screencopy_frame.destroy();
             }
             _ => unreachable!(),
         }
